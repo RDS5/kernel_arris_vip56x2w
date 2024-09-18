@@ -51,7 +51,12 @@
 #define UBI_NAME_STR "ubi"
 
 /* Normal UBI messages */
+#ifdef CONFIG_KREATV_BOOT_LOADER
+#define ubi_msg(fmt, ...) while(0)
+#else
 #define ubi_msg(fmt, ...) pr_notice("UBI: " fmt "\n", ##__VA_ARGS__)
+#endif
+
 /* UBI warning messages */
 #define ubi_warn(fmt, ...) pr_warn("UBI warning: %s: " fmt "\n",  \
 				   __func__, ##__VA_ARGS__)

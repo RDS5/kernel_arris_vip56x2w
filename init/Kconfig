@@ -1,3 +1,8 @@
+config KREATV_VIP
+	bool "KreaTV VIP STB"
+        depends on BRCMSTB
+	default n
+
 config ARCH
 	string
 	option env="ARCH"

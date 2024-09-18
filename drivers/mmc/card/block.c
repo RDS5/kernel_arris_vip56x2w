@@ -569,6 +569,21 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	}
 
 	/*
+	 * Update cached partition config if updated
+	 * This should probably be done in a different way
+	 */
+	if (idata->ic.write_flag && idata->ic.opcode == MMC_SWITCH
+	    && ((idata->ic.arg >> 24) & 0xff) == MMC_SWITCH_MODE_WRITE_BYTE
+	    && ((idata->ic.arg >> 16) & 0xff) == EXT_CSD_PART_CONFIG
+	    && mmc_card_mmc(card)) {
+		u8 *ext_csd = kzalloc(512, GFP_KERNEL);
+		if (mmc_send_ext_csd(card, ext_csd) == 0) {
+			card->ext_csd.part_config = ext_csd[EXT_CSD_PART_CONFIG];
+		}
+		kfree(ext_csd);
+	}
+
+	/*
 	 * According to the SD specs, some commands require a delay after
 	 * issuing the command.
 	 */

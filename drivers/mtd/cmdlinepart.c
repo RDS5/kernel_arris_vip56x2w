@@ -54,6 +54,8 @@
 #include <linux/mtd/partitions.h>
 #include <linux/module.h>
 #include <linux/err.h>
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
 
 /* error message prefix */
 #define ERRP "mtd: "
@@ -85,6 +87,69 @@ static char *mtdparts;
 static char *cmdline;
 static int cmdline_parsed;
 
+#ifdef CONFIG_MTD_CMDLINE_PARTS_PROC
+static int mtdpart_setup_real(char *s);
+static size_t cmdline_len = 0;
+static char *cmdline_buf = NULL;
+static int cmdline_written = 0;
+
+static int read_proc(struct file *filp, char *buf, size_t count, loff_t *offp)
+{
+	size_t len;
+	if (!cmdline) return 0;
+	len = strlen(cmdline);
+	if (count + *offp > len)
+	{
+		count = len - *offp;
+	}
+	copy_to_user(buf, cmdline + *offp, count);
+
+	*offp += count;
+	return count;
+}
+
+static int write_proc(struct file *filp, const char *buf, size_t count, loff_t *offp)
+{
+	int tmp_len = cmdline_len;
+	char *tmp_buf = cmdline_buf;
+
+	if (*offp + count) {
+		cmdline_buf = kmalloc(GFP_KERNEL, *offp + count + 1);
+		if (!cmdline_buf) {
+			printk(KERN_ERR ERRP "out of memory\n");
+			return 0;
+		}
+		cmdline_len = *offp + count;
+		if (tmp_buf != NULL) {
+			memcpy(cmdline_buf, tmp_buf, tmp_len);
+			kfree(tmp_buf);
+		}
+		cmdline = cmdline_buf;
+	}
+	copy_from_user(cmdline_buf, buf + *offp, count);
+	cmdline_buf[*offp + count] = '\0'; /* NULL terminate */
+	*offp += count;
+	cmdline_written = 1;
+
+	return count;
+}
+
+static int release_proc(struct inode *inode, struct file *file)
+{
+	if (cmdline_written) {
+		cmdline_written = 0;
+		mtdpart_setup_real(cmdline);
+	}
+	return 0;
+}
+
+static struct file_operations proc_fops = {
+	.read   	= read_proc,
+	.write  	= write_proc,
+	.release	= release_proc,
+};
+
+#endif
 /*
  * Parse one partition definition for an MTD. Since there can be many
  * comma separated partition definitions, this function calls itself
@@ -169,10 +234,12 @@ static struct mtd_partition * newpart(char *s,
 
 	/* test if more partitions are following */
 	if (*s == ',') {
+#if 0
 		if (size == SIZE_REMAINING) {
 			printk(KERN_ERR ERRP "no partitions allowed after a fill-up partition\n");
 			return ERR_PTR(-EINVAL);
 		}
+#endif
 		/* more partitions follow, parse them */
 		parts = newpart(s + 1, &s, num_parts, this_part + 1,
 				&extra_mem, extra_mem_size);
@@ -313,6 +380,7 @@ static int parse_cmdline_partitions(struct mtd_info *master,
 	int i, err;
 	struct cmdline_mtd_partition *part;
 	const char *mtd_id = master->name;
+        char name[32];
 
 	/* parse command line */
 	if (!cmdline_parsed) {
@@ -325,20 +393,29 @@ static int parse_cmdline_partitions(struct mtd_info *master,
 	 * Search for the partition definition matching master->name.
 	 * If master->name is not set, stop at first partition definition.
 	 */
-	for (part = partitions; part; part = part->next) {
-		if ((!mtd_id) || (!strcmp(part->mtd_id, mtd_id)))
-			break;
+	for (i = 0,part = partitions; part; i++, part = part->next) {
+          if (master->type == MTD_NANDFLASH || master->type == MTD_MLCNANDFLASH) {
+            sprintf(name, "nand.%d", i);
+            if (!strcmp(part->mtd_id, name)) {
+              break;
+            }
+          }
+          if ((!mtd_id) || (!strcmp(part->mtd_id, mtd_id)))
+            break;
 	}
 
 	if (!part)
 		return 0;
 
 	for (i = 0, offset = 0; i < part->num_parts; i++) {
+#if 0
 		if (part->parts[i].offset == OFFSET_CONTINUOUS)
 			part->parts[i].offset = offset;
 		else
 			offset = part->parts[i].offset;
-
+#else
+                offset = part->parts[i].offset;
+#endif
 		if (part->parts[i].size == SIZE_REMAINING)
 			part->parts[i].size = master->size - offset;
 
@@ -396,11 +473,20 @@ static int __init cmdline_parser_init(void)
 	if (mtdparts)
 		mtdpart_setup(mtdparts);
 	register_mtd_parser(&cmdline_parser);
+#ifdef CONFIG_MTD_CMDLINE_PARTS_PROC
+	proc_create("mtd_cmdlinepart", 0, NULL, &proc_fops);
+#endif
 	return 0;
 }
 
 static void __exit cmdline_parser_exit(void)
 {
+#ifdef CONFIG_MTD_CMDLINE_PARTS_PROC
+	remove_proc_entry("mtd_cmdlinepart", NULL);
+	kfree(cmdline_buf);
+	cmdline_buf = NULL;
+	cmdline_len = 0;
+#endif
 	deregister_mtd_parser(&cmdline_parser);
 }
 

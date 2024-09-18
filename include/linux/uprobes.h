@@ -32,6 +32,7 @@ struct vm_area_struct;
 struct mm_struct;
 struct inode;
 struct notifier_block;
+struct page;
 
 #define UPROBE_HANDLER_REMOVE		1
 #define UPROBE_HANDLER_MASK		1
@@ -126,6 +127,9 @@ extern bool arch_uprobe_xol_was_trapped(struct task_struct *tsk);
 extern int  arch_uprobe_exception_notify(struct notifier_block *self, unsigned long val, void *data);
 extern void arch_uprobe_abort_xol(struct arch_uprobe *aup, struct pt_regs *regs);
 extern unsigned long arch_uretprobe_hijack_return_addr(unsigned long trampoline_vaddr, struct pt_regs *regs);
+extern bool __weak arch_uprobe_ignore(struct arch_uprobe *aup, struct pt_regs *regs);
+extern void __weak arch_uprobe_copy_ixol(struct page *page, unsigned long vaddr,
+					 void *src, unsigned long len);
 #else /* !CONFIG_UPROBES */
 struct uprobes_state {
 };

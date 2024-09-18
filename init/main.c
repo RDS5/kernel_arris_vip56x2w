@@ -261,8 +261,7 @@ static int __init unknown_bootoption(char *param, char *val, const char *unused)
 	repair_env_string(param, val, unused);
 
 	/* Handle obsolete-style parameters */
-	if (obsolete_checksetup(param))
-		return 0;
+	obsolete_checksetup(param);
 
 	/* Unused module parameter. */
 	if (strchr(param, '.') && (!val || strchr(param, '.') < val))
@@ -849,6 +848,9 @@ static int __ref kernel_init(void *unused)
 	system_state = SYSTEM_RUNNING;
 	numa_default_policy();
 
+#ifdef CONFIG_KREATV_VIP
+	sys_mknod((const char __user *) "/dev/console", S_IFCHR | 0644, 5 << 8 | 1);
+#endif
 	flush_delayed_fput();
 
 	if (ramdisk_execute_command) {
@@ -872,6 +874,10 @@ static int __ref kernel_init(void *unused)
 		pr_err("Failed to execute %s (error %d).  Attempting defaults...\n",
 			execute_command, ret);
 	}
+#ifdef CONFIG_KREATV_VIP
+        if (!run_init_process("/init"))
+          return 0;
+#endif
 	if (!try_to_run_init_process("/sbin/init") ||
 	    !try_to_run_init_process("/etc/init") ||
 	    !try_to_run_init_process("/bin/init") ||

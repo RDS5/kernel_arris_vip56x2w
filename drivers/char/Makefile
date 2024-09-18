@@ -52,6 +52,8 @@ obj-$(CONFIG_MWAVE)		+= mwave/
 obj-y				+= agp/
 obj-$(CONFIG_PCMCIA)		+= pcmcia/
 
+obj-$(CONFIG_KBOX_DEVICE)      += kboxdev.o
+
 obj-$(CONFIG_HANGCHECK_TIMER)	+= hangcheck-timer.o
 obj-$(CONFIG_TCG_TPM)		+= tpm/
 

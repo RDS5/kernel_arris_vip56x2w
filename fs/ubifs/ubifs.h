@@ -42,7 +42,12 @@
 #define UBIFS_VERSION 1
 
 /* Normal UBIFS messages */
+#ifdef CONFIG_KREATV_BOOT_LOADER
+#define ubifs_msg(fmt, ...) while(0)
+#else
 #define ubifs_msg(fmt, ...) pr_notice("UBIFS: " fmt "\n", ##__VA_ARGS__)
+#endif
+
 /* UBIFS error messages */
 #define ubifs_err(fmt, ...)                                         \
 	pr_err("UBIFS error (pid %d): %s: " fmt "\n", current->pid, \

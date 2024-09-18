@@ -58,6 +58,12 @@ static void gpio_keys_polled_check_state(struct input_dev *input,
 	if (state != bdata->last_state) {
 		unsigned int type = button->type ?: EV_KEY;
 
+ 		if (button->code == KEY_POWER && state) {
+			input_report_key(input, KEY_LEFTCTRL, 1);
+			input_report_key(input, KEY_ESC, 1);
+			input_report_key(input, KEY_ESC, 0);
+			input_report_key(input, KEY_LEFTCTRL, 0);
+		}
 		input_event(input, type, button->code,
 			    !!(state ^ button->active_low));
 		input_sync(input);
@@ -295,6 +301,8 @@ static int gpio_keys_polled_probe(struct platform_device *pdev)
 						pdata->poll_interval);
 
 		input_set_capability(input, type, button->code);
+		input_set_capability(input, EV_KEY, KEY_ESC);
+		input_set_capability(input, EV_KEY, KEY_LEFTCTRL);
 	}
 
 	bdev->poll_dev = poll_dev;

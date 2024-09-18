@@ -70,28 +70,36 @@ static int __init __bmem_setup(phys_addr_t addr, phys_addr_t size)
 static int __init bmem_setup(char *str)
 {
 	phys_addr_t addr = 0, size;
-	char *orig_str = str;
-	int ret;
+	char sstr[COMMAND_LINE_SIZE];
+	char *sstr_ptr = sstr;
+	char *opt;
+	int ret = 0;
 
-	size = memparse(str, &str);
-	if (*str == '@')
-		addr = memparse(str + 1, &str);
+	if (!str || !*str)
+		return ret;
+	strcpy(sstr, str);
+	while ((opt = strsep(&sstr_ptr, ",")) != NULL) {
+		char *p = opt;
+		size = memparse(p, &p);
+		if (*p == '@')
+			addr = memparse(p + 1, &p);
 
-	if ((addr & ~PAGE_MASK) || (size & ~PAGE_MASK)) {
-		pr_warn("ignoring invalid range '%s' (is it missing an 'M' suffix?)\n",
-				orig_str);
-		return 0;
+		if ((addr & ~PAGE_MASK) || (size & ~PAGE_MASK)) {
+			pr_warn("ignoring invalid range '%s' (is it missing an 'M' suffix?)\n",
+				str);
+			return 0;
+		}
+
+		if (size == 0) {
+			pr_info("disabling reserved memory\n");
+			bmem_disabled = true;
+			return 0;
+		}
+
+		ret = __bmem_setup(addr, size);
+		if (!ret)
+			brcmstb_memory_override_defaults = true;
 	}
-
-	if (size == 0) {
-		pr_info("disabling reserved memory\n");
-		bmem_disabled = true;
-		return 0;
-	}
-
-	ret = __bmem_setup(addr, size);
-	if (!ret)
-		brcmstb_memory_override_defaults = true;
 	return ret;
 }
 early_param("bmem", bmem_setup);

@@ -262,6 +262,8 @@ static int __init ic_open_devs(void)
 	if (!ic_first_dev)
 		goto have_carrier;
 
+        /* Don't wait for carrier, this is a KreaTV hack */
+        goto have_carrier;
 	/* wait for a carrier on at least one device */
 	start = jiffies;
 	next_msg = start + msecs_to_jiffies(CONF_CARRIER_TIMEOUT/12);

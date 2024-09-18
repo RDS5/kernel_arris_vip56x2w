@@ -966,3 +966,27 @@ config ARCH_SUPPORTS_BIG_ENDIAN
 	help
 	  This option specifies the architecture can support big endian
 	  operation.
+
+config KBOX_SECONDARY_FB_MEMORY
+	bool "Secondary FB memory"
+	help
+	  Allocate FB memory on second memory controler.
+
+config KBOX_RESERVE_SECURE_PCIE_MEMORY
+	bool "Reserve PCIe memory"
+	help
+	  Use dedicated memory reservation for PCIe. This is needed for
+	  some WiFi drivers. The size and address is specified via kernel
+	  command paramter pcie_reservation=size@address. If this parameter
+	  is missing a default value will be used instead.
+
+config KBOX_RESERVE_VIDEO_AREA
+	bool "Reserve video memory"
+	help
+	  Use dedicated memory reservation for the video area.
+
+config KBOX_RESERVE_SECONDARY_FB_AREA
+	bool "Reserve secondary FB memory"
+	depends on KBOX_SECONDARY_FB_MEMORY
+	help
+	  Use dedicated memory reservation for the secondary FB area.

@@ -112,8 +112,9 @@ static int led_pwm_create_of(struct platform_device *pdev,
 			ret = PTR_ERR(led_dat->pwm);
 			goto err;
 		}
-		/* Get the period from PWM core when n*/
+		/* Get the period and duty from PWM core when n*/
 		led_dat->period = pwm_get_period(led_dat->pwm);
+		led_dat->duty = pwm_get_duty_cycle(led_dat->pwm);
 
 		led_dat->cdev.default_trigger = of_get_property(child,
 						"linux,default-trigger", NULL);
@@ -121,7 +122,17 @@ static int led_pwm_create_of(struct platform_device *pdev,
 				     &led_dat->cdev.max_brightness);
 
 		led_dat->cdev.brightness_set = led_pwm_set;
-		led_dat->cdev.brightness = LED_OFF;
+		if (led_dat->period > 0) {
+			led_dat->cdev.brightness =
+ 				led_dat->duty * led_dat->cdev.max_brightness;
+			do_div(led_dat->cdev.brightness, led_dat->period);
+		}
+		else {
+			led_dat->cdev.brightness = LED_OFF;
+		}
+		if (led_dat->cdev.brightness > led_dat->cdev.max_brightness) {
+			led_dat->cdev.brightness = led_dat->cdev.max_brightness;
+		}
 		led_dat->cdev.flags |= LED_CORE_SUSPENDRESUME;
 
 		led_dat->can_sleep = pwm_can_sleep(led_dat->pwm);

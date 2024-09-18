@@ -1070,6 +1070,12 @@ config INDYDOG
 	  timer expired and no process has written to /dev/watchdog during
 	  that time.
 
+config BRCM_WD
+       tristate "Broadcom Hardware Watchdog"
+       depends on WATCHDOG && !DCXBOARD_WD
+       help
+         Hardware driver for the Broadcom HW watchdog.
+
 config JZ4740_WDT
 	tristate "Ingenic jz4740 SoC hardware watchdog"
 	depends on MACH_JZ4740

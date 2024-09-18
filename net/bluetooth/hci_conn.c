@@ -560,7 +560,7 @@ static int hci_create_le_conn(struct hci_conn *conn)
 	cp.own_address_type = conn->src_type;
 	cp.conn_interval_min = cpu_to_le16(hdev->le_conn_min_interval);
 	cp.conn_interval_max = cpu_to_le16(hdev->le_conn_max_interval);
-	cp.supervision_timeout = __constant_cpu_to_le16(0x002a);
+	cp.supervision_timeout = __constant_cpu_to_le16(0x0096);
 	cp.min_ce_len = __constant_cpu_to_le16(0x0000);
 	cp.max_ce_len = __constant_cpu_to_le16(0x0000);
 

@@ -295,6 +295,15 @@ static int part_block_isbad(struct mtd_info *mtd, loff_t ofs)
 	return part->master->_block_isbad(part->master, ofs);
 }
 
+static int part_block_isbadtype(struct mtd_info *mtd, loff_t ofs)
+{
+	struct mtd_part *part = PART(mtd);
+	if (ofs >= mtd->size)
+		return -EINVAL;
+	ofs += part->offset;
+	return part->master->_block_isbadtype(part->master, ofs);
+}
+
 static int part_block_markbad(struct mtd_info *mtd, loff_t ofs)
 {
 	struct mtd_part *part = PART(mtd);
@@ -422,6 +431,8 @@ static struct mtd_part *allocate_partition(struct mtd_info *master,
 		slave->mtd._is_locked = part_is_locked;
 	if (master->_block_isbad)
 		slave->mtd._block_isbad = part_block_isbad;
+	if (master->_block_isbadtype)
+		slave->mtd._block_isbadtype = part_block_isbadtype;
 	if (master->_block_markbad)
 		slave->mtd._block_markbad = part_block_markbad;
 	slave->mtd._erase = part_erase;

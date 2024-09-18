@@ -48,6 +48,12 @@
 #include <linux/leds.h>
 #include <linux/io.h>
 #include <linux/mtd/partitions.h>
+#include <linux/fs.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/utsname.h>
 
 /* Define default oob placement schemes for large and small page devices */
 static struct nand_ecclayout nand_oob_8 = {
@@ -92,6 +98,8 @@ static struct nand_ecclayout nand_oob_128 = {
 		{.offset = 2,
 		 .length = 78} }
 };
+
+static char nand_string[256] = "Uninitialized NAND manufacturer string";
 
 static int nand_get_device(struct mtd_info *mtd, int new_state);
 
@@ -504,6 +512,17 @@ static int nand_block_checkbad(struct mtd_info *mtd, loff_t ofs, int getchip,
 
 	/* Return info from the table */
 	return nand_isbad_bbt(mtd, ofs, allowbbt);
+}
+
+static int nand_block_checkbadtype(struct mtd_info *mtd, loff_t ofs)
+{
+	struct nand_chip *chip = mtd->priv;
+	if (!chip->bbt) {
+		return -EOPNOTSUPP;
+	}
+
+	/* Return info from the table */
+	return nand_isbadtype_bbt(mtd, ofs);
 }
 
 /**
@@ -2714,13 +2733,15 @@ int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
 	instr->state = MTD_ERASING;
 
 	while (len) {
-		/* Check if we have a bad block, we do not erase bad blocks! */
-		if (nand_block_checkbad(mtd, ((loff_t) page) <<
-					chip->page_shift, 0, allowbbt)) {
-			pr_warn("%s: attempt to erase a bad block at page 0x%08x\n",
-				    __func__, page);
-			instr->state = MTD_ERASE_FAILED;
-			goto erase_exit;
+		if(instr->bb_override == 0) {
+			/* Check if we have a bad block, we do not erase bad blocks! */
+			if (nand_block_checkbad(mtd, ((loff_t) page) <<
+						chip->page_shift, 0, allowbbt)) {
+				pr_warn("%s: attempt to erase a bad block at page 0x%08x\n",
+						__func__, page);
+				instr->state = MTD_ERASE_FAILED;
+				goto erase_exit;
+			}
 		}
 
 		/*
@@ -2806,6 +2827,11 @@ static void nand_sync(struct mtd_info *mtd)
 static int nand_block_isbad(struct mtd_info *mtd, loff_t offs)
 {
 	return nand_block_checkbad(mtd, offs, 1, 0);
+}
+
+static int nand_block_isbadtype(struct mtd_info *mtd, loff_t offs)
+{
+	return nand_block_checkbadtype(mtd, offs);
 }
 
 /**
@@ -3642,6 +3668,13 @@ ident_done:
 	pr_info("%dMiB, %s, page size: %d, OOB size: %d\n",
 		(int)(chip->chipsize >> 20), nand_is_slc(chip) ? "SLC" : "MLC",
 		mtd->writesize, mtd->oobsize);
+	/* Also print a string that we later can read via /the proc file
+ 	 * system */
+	snprintf(nand_string, sizeof(nand_string), "Manufacturer ID: "
+		"0x%02x, Chip ID: 0x%02x, ID2-7: 0x%02x,0x%02x,0x%02x,0x%02x,0x%02x,"
+		"0x%02x (%s %s)", *maf_id, *dev_id, id_data[2], id_data[3], id_data[4],
+		id_data[5], id_data[6], id_data[7],nand_manuf_ids[maf_idx].name,
+		chip->onfi_version ? chip->onfi_params.model : type->name);
 	return type;
 }
 
@@ -3970,6 +4003,7 @@ int nand_scan_tail(struct mtd_info *mtd)
 	mtd->_suspend = nand_suspend;
 	mtd->_resume = nand_resume;
 	mtd->_block_isbad = nand_block_isbad;
+	mtd->_block_isbadtype = nand_block_isbadtype;
 	mtd->_block_markbad = nand_block_markbad;
 	mtd->writebufsize = mtd->writesize;
 
@@ -4058,15 +4092,46 @@ void nand_release(struct mtd_info *mtd)
 }
 EXPORT_SYMBOL_GPL(nand_release);
 
+static int show_proc_nandtype(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%s\n", nand_string);
+	return 0;
+}
+
+static int open_proc_nandtype(struct inode *inode, struct file *file)
+{
+	return single_open(file, show_proc_nandtype, NULL);
+}
+
+static void create_proc_nandtype(void)
+{
+	struct proc_dir_entry *proc_file_entry;
+	static const struct file_operations proc_file_fops = {
+		.owner = THIS_MODULE,
+		.open           = open_proc_nandtype,
+		.read           = seq_read,
+		.llseek         = seq_lseek,
+		.release        = single_release,
+	};
+
+	proc_file_entry = proc_create("driver/nandtype", 0, NULL,
+		&proc_file_fops);
+	if(proc_file_entry == NULL) {
+		printk(KERN_WARNING "Could not create /proc/driver/nandtype\n");
+	}
+}
+
 static int __init nand_base_init(void)
 {
 	led_trigger_register_simple("nand-disk", &nand_led_trigger);
+	create_proc_nandtype();
 	return 0;
 }
 
 static void __exit nand_base_exit(void)
 {
 	led_trigger_unregister_simple(nand_led_trigger);
+	remove_proc_entry("driver/nandtype", NULL);
 }
 
 module_init(nand_base_init);

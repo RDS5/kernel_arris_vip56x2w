@@ -104,6 +104,16 @@ config PINCTRL_BCM2835
 	select PINMUX
 	select PINCONF
 
+config PINCTRL_BCM7xxx
+	bool
+	depends on OF
+	select PINMUX
+	select PINCONF
+
+config PINMUX_BCM7xxx
+	bool
+	depends on OF
+
 config PINCTRL_CAPRI
 	bool "Broadcom Capri pinctrl driver"
 	depends on OF

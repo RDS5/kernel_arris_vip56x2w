@@ -692,11 +692,10 @@ int __init arm_add_memory(u64 start, u64 size)
  * Pick out the memory size.  We look for mem=size@start,
  * where start and size are "size[KkMm]"
  */
-static int __init early_mem(char *p)
+static int __init early_memsize(char *p)
 {
 	static int usermem __initdata = 0;
 	u64 size;
-	u64 start;
 	char *endp;
 
 	/*
@@ -709,16 +708,28 @@ static int __init early_mem(char *p)
 		meminfo.nr_banks = 0;
 	}
 
-	start = PHYS_OFFSET;
 	size  = memparse(p, &endp);
-	if (*endp == '@')
-		start = memparse(endp + 1, NULL);
-
-	arm_add_memory(start, size);
+        if (size > 4*1024*1024) {
+          printk(KERN_ERR "Bad systemmemsize kernel parameter\n");
+        } else {
+          size *= 1024;
+        }
+        arm_add_memory(PHYS_OFFSET, size);
 
 	return 0;
 }
-early_param("mem", early_mem);
+#ifdef CONFIG_BCM7439B0
+early_param("mem", early_memsize);
+#else
+early_param("systemmemsize", early_memsize);
+#endif
+
+static int __init early_mem_error(char *p)
+{
+	printk(KERN_WARNING "Please use kernel parameter systemmemsize instead of mem\n");
+        return 1;
+}
+early_param("mem", early_mem_error);
 
 static void __init request_standard_resources(const struct machine_desc *mdesc)
 {

@@ -50,6 +50,9 @@ config ARCH_BRCMSTB
 	select BRCMSTB_GISB_ARB
 	select SOC_BRCMSTB
 	select ARCH_WANT_OPTIONAL_GPIOLIB
+	select PINCTRL
+	select PINCTRL_BCM7xxx
+        select PINMUX_BCM7xxx
 	help
 	  Say Y if you intend to run the kernel on a Broadcom ARM-based STB
 	  chipset.
@@ -184,6 +187,14 @@ config BCMGENET
 	  If your chipset supports power management, disabling this driver
 	  will keep the device permanently powered down.
 
+config VIP3500_GENET_BOARD_STRAPS
+       tristate "VIP35X0/VIP56X0 board id strapping"
+       depends on BCMGENET && BCM7439B0
+       help
+         Say Y to use the VIP3500 board id strap pins for Ethernet configuration
+	 on VIP35x0 and VIP56x2.
+
+
 config BRCM_MOCA
 	tristate "Broadcom MoCA character driver"
 	depends on BRCMSTB && (BRCM_HAS_GENET || BRCM_HAS_MOCA_20_GEN21 || \
@@ -233,6 +244,13 @@ config BRCM_SDIO
 	  will save about 75KB.
 
 	  If unsure, say Y.
+
+config KREATV_BOOT_LOADER
+	bool "KreaTV boot loader"
+	depends on BRCMSTB
+	default n
+	help
+	  Boot loader specific configurations
 
 #####################################################################
 # Hidden options

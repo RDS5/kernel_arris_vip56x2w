@@ -56,10 +56,16 @@
 #include <linux/ip.h>
 #include <linux/ipv6.h>
 #include <linux/phy.h>
+#include <linux/reboot.h>
+#include <linux/notifier.h>
 
 #include <asm/unaligned.h>
 
 #include "bcmgenet.h"
+
+typedef int (K_FILTER)(struct sk_buff*);
+K_FILTER *kfilter;
+EXPORT_SYMBOL(kfilter);
 
 /* Maximum number of hardware queues, downsized if needed */
 #define GENET_MAX_MQ_CNT	4
@@ -1050,8 +1056,6 @@ static int bcmgenet_power_down(struct bcmgenet_priv *priv,
 			reg |= (EXT_PWR_DOWN_PHY |
 				EXT_PWR_DOWN_DLL | EXT_PWR_DOWN_BIAS);
 			bcmgenet_ext_writel(priv, reg, EXT_EXT_PWR_MGMT);
-
-			bcmgenet_phy_power_set(priv->dev, false);
 		}
 		break;
 	default:
@@ -1092,7 +1096,6 @@ static void bcmgenet_power_up(struct bcmgenet_priv *priv,
 			/* enable APD */
 			reg |= EXT_PWR_DN_EN_LD;
 			bcmgenet_ext_writel(priv, reg, EXT_EXT_PWR_MGMT);
-			bcmgenet_phy_power_set(priv->dev, true);
 		}
 	default:
 		break;
@@ -1440,8 +1443,6 @@ static netdev_tx_t bcmgenet_xmit(struct sk_buff *skb, struct net_device *dev)
 	spin_lock_irqsave(&ring->lock, flags);
 	if (ring->free_bds <= nr_frags + 1) {
 		netif_tx_stop_queue(txq);
-		netdev_err(dev, "%s: tx ring %d full when queue %d awake\n",
-				__func__, index, ring->queue);
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}
@@ -1699,7 +1700,9 @@ static unsigned int bcmgenet_desc_rx(struct bcmgenet_priv *priv,
 			dev->stats.multicast++;
 
 		/* Notify kernel */
-		napi_gro_receive(&priv->napi, skb);
+                if ((!kfilter) || kfilter(skb)) {
+                  napi_gro_receive(&priv->napi, skb);
+                }
 		cb->skb = NULL;
 		netif_dbg(priv, rx_status, dev, "pushed up to kernel\n");
 
@@ -2148,6 +2151,10 @@ static int bcmgenet_init_dma(struct bcmgenet_priv *priv)
 		return ret;
 	}
 
+  /* disable DMA */
+  bcmgenet_rdma_writel(priv, 0, DMA_CTRL);
+  bcmgenet_tdma_writel(priv, 0, DMA_CTRL);
+
 	/* init rDma */
 	bcmgenet_rdma_writel(priv, DMA_MAX_BURST_LENGTH, DMA_SCB_BURST_SIZE);
 
@@ -2407,6 +2414,9 @@ static void bcmgenet_netif_start(struct net_device *dev)
 	napi_enable(&priv->napi);
 
 	umac_enable_set(priv, CMD_TX_EN | CMD_RX_EN, true);
+
+	if (priv->phy_type == BRCM_PHY_TYPE_INT)
+		bcmgenet_power_up(priv, GENET_POWER_PASSIVE);
 
 	netif_tx_start_all_queues(dev);
 
@@ -2884,6 +2894,28 @@ static const struct of_device_id bcmgenet_match[] = {
 	{ },
 };
 
+static struct net_device *eth_root_dev = NULL;
+
+static int bcmgenet_notify_sys(struct notifier_block *this,
+                             unsigned long code, void *unused)
+{
+	if ((code == SYS_DOWN || code == SYS_HALT) && eth_root_dev != NULL) {
+		struct bcmgenet_priv *priv = netdev_priv(eth_root_dev);
+		eth_root_dev = NULL;
+		unregister_netdev(priv->dev);
+		/* bcmgenet_mii_exit(priv->dev); */
+
+		free_netdev(priv->dev);
+	}
+
+  return NOTIFY_DONE;
+}
+
+static struct notifier_block bcmgenet_notifier = {
+       .notifier_call = bcmgenet_notify_sys
+};
+
+
 static int bcmgenet_drv_probe(struct platform_device *pdev)
 {
 	struct device_node *dn = pdev->dev.of_node;
@@ -2893,6 +2925,8 @@ static int bcmgenet_drv_probe(struct platform_device *pdev)
 	const void *macaddr;
 	struct resource *r;
 	int err = -EIO;
+
+  if (strstr(boot_command_line, "bt=Trillian") != NULL) return 0;
 
 	/* Up to GENET_MAX_MQ_CNT + 1 TX queues and a single RX queue */
 	dev = alloc_etherdev_mqs(sizeof(*priv), GENET_MAX_MQ_CNT + 1, 1);
@@ -3018,13 +3052,15 @@ static int bcmgenet_drv_probe(struct platform_device *pdev)
 
 	/* We report link status through the PHY library */
 	netif_carrier_off(dev);
-
+  eth_root_dev = dev;
 	/* Turn off the clocks */
 	clk_disable_unprepare(priv->clk);
 
 	err = register_netdev(dev);
 	if (err)
 		goto err_clk_disable;
+
+  register_reboot_notifier(&bcmgenet_notifier);
 
 	return err;
 
@@ -3038,6 +3074,8 @@ err:
 static int bcmgenet_drv_remove(struct platform_device *pdev)
 {
 	struct bcmgenet_priv *priv = dev_to_priv(&pdev->dev);
+
+  if (strstr(boot_command_line, "bt=Trillian") != NULL) return 0;
 
 	dev_set_drvdata(&pdev->dev, NULL);
 	unregister_netdev(priv->dev);

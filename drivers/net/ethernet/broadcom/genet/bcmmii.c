@@ -38,6 +38,7 @@
 #include <linux/of.h>
 #include <linux/of_net.h>
 #include <linux/of_mdio.h>
+#include <linux/brcmstb/brcmstb.h>
 
 /* read a value from the MII */
 static int bcmgenet_mii_read(struct mii_bus *bus, int phy_id, int location)
@@ -185,7 +186,7 @@ void bcmgenet_mii_setup(struct net_device *dev)
  * micro seconds always works. The post-reset delay of 20 micro seconds could
  * be eliminated but better be safe than sorry.
  */
-void bcmgenet_phy_power_set(struct net_device *dev, bool enable)
+static void bcmgenet_ephy_power_up(struct net_device *dev)
 {
 	struct bcmgenet_priv *priv = netdev_priv(dev);
 	u32 reg = 0;
@@ -195,23 +196,17 @@ void bcmgenet_phy_power_set(struct net_device *dev, bool enable)
 		return;
 
 	reg = bcmgenet_ext_readl(priv, EXT_GPHY_CTRL);
-	if (enable) {
-		reg &= ~EXT_CK25_DIS;
-		bcmgenet_ext_writel(priv, reg, EXT_GPHY_CTRL);
-		mdelay(1);
 
-		reg &= ~(EXT_CFG_IDDQ_BIAS | EXT_CFG_PWR_DOWN);
-		reg |= EXT_GPHY_RESET;
-		bcmgenet_ext_writel(priv, reg, EXT_GPHY_CTRL);
-		mdelay(1);
+	reg &= ~EXT_CK25_DIS;
+	bcmgenet_ext_writel(priv, reg, EXT_GPHY_CTRL);
+	mdelay(1);
 
-		reg &= ~EXT_GPHY_RESET;
-	} else {
-		reg |= EXT_CFG_IDDQ_BIAS | EXT_CFG_PWR_DOWN | EXT_GPHY_RESET;
-		bcmgenet_ext_writel(priv, reg, EXT_GPHY_CTRL);
-		mdelay(1);
-		reg |= EXT_CK25_DIS;
-	}
+	reg &= ~(EXT_CFG_IDDQ_BIAS | EXT_CFG_PWR_DOWN);
+	reg |= EXT_GPHY_RESET;
+	bcmgenet_ext_writel(priv, reg, EXT_GPHY_CTRL);
+	mdelay(1);
+
+	reg &= ~EXT_GPHY_RESET;
 	bcmgenet_ext_writel(priv, reg, EXT_GPHY_CTRL);
 	udelay(60);
 }
@@ -399,8 +394,8 @@ static void bcmgenet_internal_phy_setup(struct net_device *dev)
 	struct bcmgenet_priv *priv = netdev_priv(dev);
 	u32 reg;
 
-	/* Power up PHY */
-	bcmgenet_phy_power_set(dev, true);
+	/* Power up EPHY */
+	bcmgenet_ephy_power_up(dev);
 	/* enable APD */
 	reg = bcmgenet_ext_readl(priv, EXT_EXT_PWR_MGMT);
 	reg |= EXT_PWR_DN_EN_LD;
@@ -429,6 +424,9 @@ int bcmgenet_mii_config(struct net_device *dev)
 	u32 id_mode_dis = 0;
 	u32 port_ctrl;
 	u32 reg;
+#ifdef CONFIG_VIP3500_GENET_BOARD_STRAPS
+	u8  board_id;
+#endif
 
 	priv->ext_phy = (priv->phy_type != BRCM_PHY_TYPE_INT) &&
 			(priv->phy_type != BRCM_PHY_TYPE_MOCA);
@@ -436,6 +434,17 @@ int bcmgenet_mii_config(struct net_device *dev)
 	switch (priv->phy_interface) {
 	case PHY_INTERFACE_MODE_NA:
 	case PHY_INTERFACE_MODE_MOCA:
+#ifdef CONFIG_VIP3500_GENET_BOARD_STRAPS
+		reg = BDEV_RD(BCHP_GIO_DATA_HI);
+		board_id = (((reg & (1 << (38 - 32))) >> (38 - 32)) << 3)
+			| (((reg & (1 << (39 - 32))) >> (39 - 32)) << 2)
+			| (((reg & (1 << (40 - 32))) >> (40 - 32)) << 1)
+			| (((reg & (1 << (45 - 32))) >> (45 - 32)) << 0);
+		if ((board_id < 6) || (board_id == 12)) {
+			printk("Disabling internal phy for VIP35X0/VIP56X2      board id %d\n", board_id);
+			return -EINVAL;
+		}
+#endif
 		phy_name = "internal PHY";
 		/* Irrespective of the actually configured PHY speed (100 or
 		 * 1000) GENETv4 only has an internal GPHY so we will just end
@@ -462,6 +471,17 @@ int bcmgenet_mii_config(struct net_device *dev)
 		break;
 
 	case PHY_INTERFACE_MODE_MII:
+#ifdef CONFIG_VIP3500_GENET_BOARD_STRAPS
+		reg = BDEV_RD(BCHP_GIO_DATA_HI);
+		board_id = (((reg & (1 << (38 - 32))) >> (38 - 32)) << 3)
+			| (((reg & (1 << (39 - 32))) >> (39 - 32)) << 2)
+			| (((reg & (1 << (40 - 32))) >> (40 - 32)) << 1)
+			| (((reg & (1 << (45 - 32))) >> (45 - 32)) << 0);
+		if ((board_id > 5) && (board_id != 12)) {
+			printk("Disabling rgmii for VIP35X0/VIP56X2 board id    %d\n", board_id);
+			return -EINVAL;
+		}
+#endif
 		phy_name = "external MII";
 		priv->phy_supported = PHY_BASIC_FEATURES;
 		bcmgenet_sys_writel(priv,

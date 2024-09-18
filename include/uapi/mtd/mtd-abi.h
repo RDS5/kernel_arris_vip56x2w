@@ -202,6 +202,8 @@ struct otp_info {
  * without OOB, e.g., NOR flash.
  */
 #define MEMWRITE		_IOWR('M', 24, struct mtd_write_req)
+#define MEMERASEBADBLOCK  _IOW('M', 100, struct erase_info_user)
+#define MEMGETBADBLOCKTYPE	_IOW('M', 101, __kernel_loff_t)
 
 /*
  * Obsolete legacy interface. Keep it in order not to break userspace

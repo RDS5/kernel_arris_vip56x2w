@@ -921,6 +921,84 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 	return 0;
 }
 
+static void append_extend_cmd_line(char *command_line, char *extend_cmd_line)
+{
+	size_t orig_cmd_len = strlen(command_line);
+	char tmp[COMMAND_LINE_SIZE];
+
+	pr_debug("extend_cmd_line = %s\n", extend_cmd_line);
+	extend_cmd_line = skip_spaces(extend_cmd_line);
+	while (*extend_cmd_line != '\0') {
+		char* ext_cmd_end;
+		char* ext_cmd_value_start;
+		char needle[COMMAND_LINE_SIZE];
+		size_t ext_cmd_len;
+		size_t cmd_param_len;
+		char* cmd;
+
+		/* Find next extend parameter */
+		ext_cmd_end = strchr(extend_cmd_line, ' ');
+		if (!ext_cmd_end)
+			ext_cmd_end = extend_cmd_line
+				      + strlen(extend_cmd_line);
+		ext_cmd_len = ext_cmd_end - extend_cmd_line;
+		ext_cmd_value_start = strnchr(extend_cmd_line,
+					     ext_cmd_len, '=');
+		if (ext_cmd_value_start)
+			cmd_param_len = ext_cmd_value_start - extend_cmd_line;
+		else
+			cmd_param_len = ext_cmd_len;
+
+		/* Remove all old occurences of the parameter */
+		memcpy(needle, extend_cmd_line, cmd_param_len);
+		needle[cmd_param_len] = '\0';
+		cmd = command_line;
+		while (orig_cmd_len > (cmd - command_line)
+			&& (cmd = strnstr(cmd, needle,
+				orig_cmd_len - (cmd - command_line))) != NULL) {
+			char* cmd_end = strchr(cmd, ' ');
+			size_t cmd_len;
+			if (!cmd_end)
+				cmd_end = command_line + orig_cmd_len;
+			cmd_len = cmd_end - cmd;
+			/* Ignore bad starts */
+			if (cmd != command_line && *(cmd - 1) != ' ') {
+				++cmd;
+				continue;
+			}
+			/* Ignore bad ends */
+			if (cmd_len != cmd_param_len
+			    && cmd[cmd_param_len] != '=') {
+				++cmd;
+				continue;
+			}
+			/* Wipe it out */
+			memcpy(tmp, cmd, cmd_len);
+			tmp[cmd_len] = '\0';
+			pr_info("Removing old command line parameter: %s\n",
+				tmp);
+			cmd_end = skip_spaces(cmd_end);
+			orig_cmd_len -= cmd_end - cmd;
+			memmove(cmd, cmd_end, strlen(cmd_end) + 1);
+		}
+
+		if (strlen(command_line) + 1 + ext_cmd_len
+			   > COMMAND_LINE_SIZE - 1) {
+			memcpy(tmp, extend_cmd_line, ext_cmd_len);
+			tmp[ext_cmd_len] = '\0';
+			pr_err("No space on command line. Cannot add %s\n",
+			       tmp);
+		}
+		else {
+			command_line = strcat(command_line, " ");
+			command_line = strncat(command_line, extend_cmd_line, ext_cmd_len);
+		}
+
+		extend_cmd_line += ext_cmd_len;
+		extend_cmd_line = skip_spaces(extend_cmd_line);
+	}
+}
+
 int __init early_init_dt_scan_chosen(unsigned long node, const char *uname,
 				     int depth, void *data)
 {
@@ -953,6 +1031,11 @@ int __init early_init_dt_scan_chosen(unsigned long node, const char *uname,
 #endif /* CONFIG_CMDLINE */
 
 	pr_debug("Command line is: %s\n", (char*)data);
+
+	p = of_get_flat_dt_prop(node, "extend_cmd_line", &l);
+	if (p != NULL) {
+		append_extend_cmd_line(data, p);
+	}
 
 	/* break now */
 	return 1;

@@ -53,7 +53,55 @@ MODULE_DESCRIPTION("Console driver for network interfaces");
 MODULE_LICENSE("GPL");
 
 #define MAX_PARAM_LENGTH	256
-#define MAX_PRINT_CHUNK		1000
+
+static char *message_buffer = NULL;
+static unsigned int message_buffer_length = 0;
+static unsigned int packet_number = 1;
+
+static void queue_message(const char *message, unsigned int length)
+{
+	if (!message_buffer) {
+		/* Allocate space for the new buffer but also first add
+		   add a header containing packet number and time stamp
+		   (secs, usecs). Also reserve space for a NULL termination
+		   at the end. */
+		unsigned int tmp = 0;
+		unsigned long long current_time =
+			(unsigned long long)jiffies * (1000000000 / HZ);
+		unsigned long usecs = do_div(current_time, 1000000000) / 1000;
+		message_buffer_length = 3 * sizeof(unsigned int) + length + 1;
+		message_buffer = kmalloc(message_buffer_length, GFP_KERNEL);
+		tmp = htonl(packet_number++);
+		memcpy(message_buffer, &tmp, sizeof(unsigned int));
+		tmp = htonl(current_time);
+		memcpy(message_buffer + sizeof(unsigned int), &tmp,
+		       sizeof(unsigned int));
+		tmp = htonl(usecs);
+		memcpy(message_buffer + 2 * sizeof(unsigned int), &tmp,
+		       sizeof(unsigned int));
+		memcpy(message_buffer + 3 * sizeof(unsigned int), message,
+		       length);
+	}
+	else {
+		/* Reallocate space for the new message, remove the
+		   NULL termination at the end of the old message queue,
+		   copy the new message to the end and include a new
+		   NULL termination again. */
+		char *tmp = kmalloc(message_buffer_length - 1, GFP_KERNEL);
+		memcpy(tmp, message_buffer, message_buffer_length - 1);
+		kfree(message_buffer);
+		message_buffer = kmalloc(message_buffer_length + length,
+					 GFP_KERNEL);
+		memcpy(message_buffer, tmp, message_buffer_length - 1);
+		memcpy(message_buffer + message_buffer_length - 1, message,
+		       length);
+		message_buffer_length += length;
+		kfree(tmp);
+	}
+
+	/* Note: The NULL termination is included inside the message_buffer */
+	message_buffer[message_buffer_length - 1] = '\0';
+}
 
 static char config[MAX_PARAM_LENGTH];
 module_param_string(netconsole, config, MAX_PARAM_LENGTH, 0);
@@ -71,6 +119,14 @@ static int __init option_setup(char *opt)
 }
 __setup("netconsole=", option_setup);
 #endif	/* MODULE */
+
+static int netconsole_allowed=0;
+static int __init option_netconsole_allowed(char *opt)
+{
+	netconsole_allowed = (strcmp(opt, "yes") == 0);
+	return 1;
+}
+__setup("netconsole_allowed=", option_netconsole_allowed);
 
 /* Linked list of all configured targets */
 static LIST_HEAD(target_list);
@@ -730,10 +786,11 @@ static struct notifier_block netconsole_netdev_notifier = {
 
 static void write_msg(struct console *con, const char *msg, unsigned int len)
 {
-	int frag, left;
 	unsigned long flags;
 	struct netconsole_target *nt;
 	const char *tmp;
+	unsigned int pos = 0;
+	unsigned int new_starting_point = 0;
 
 	if (oops_only && !oops_in_progress)
 		return;
@@ -752,11 +809,23 @@ static void write_msg(struct console *con, const char *msg, unsigned int len)
 			 * of unnecessarily keeping all targets in lock-step.
 			 */
 			tmp = msg;
-			for (left = len; left;) {
-				frag = min(left, MAX_PRINT_CHUNK);
-				netpoll_send_udp(&nt->np, tmp, frag);
-				tmp += frag;
-				left -= frag;
+			/* Queue messages up to the next new line */
+			while (pos < len) {
+				if (msg[pos] == '\n') {
+					queue_message(msg + new_starting_point,
+						      pos - new_starting_point);
+					netpoll_send_udp(&nt->np, message_buffer,
+							 message_buffer_length);
+					kfree(message_buffer);
+					message_buffer = NULL;
+					message_buffer_length = 0;
+					new_starting_point = pos + 1;
+				}
+				++pos;
+			}
+			if (new_starting_point < len) {
+				queue_message(msg + new_starting_point,
+					      len - new_starting_point);
 			}
 		}
 		netconsole_target_put(nt);
@@ -777,6 +846,9 @@ static int __init init_netconsole(void)
 	unsigned long flags;
 	char *target_config;
 	char *input = config;
+
+	if (!netconsole_allowed)
+		return 0;
 
 	if (strnlen(input, MAX_PARAM_LENGTH)) {
 		while ((target_config = strsep(&input, ";"))) {
@@ -829,6 +901,9 @@ fail:
 static void __exit cleanup_netconsole(void)
 {
 	struct netconsole_target *nt, *tmp;
+
+	if (!netconsole_allowed)
+		return;
 
 	unregister_console(&netconsole);
 	dynamic_netconsole_exit();

@@ -221,6 +221,8 @@ static int read_bbt(struct mtd_info *mtd, uint8_t *buf, int page, int num,
 				uint8_t tmp = (dat >> j) & msk;
 				if (tmp == msk)
 					continue;
+				if (tmp == BBT_BLOCK_RESERVED)
+					continue; /* ignore RSVD blocks we may have in BBTs */
 				if (reserved_block_code && (tmp == reserved_block_code)) {
 					pr_info("nand_read_bbt: reserved block at 0x%012llx\n",
 						 (loff_t)(offs + act) <<
@@ -1004,9 +1006,11 @@ static void mark_bbt_region(struct mtd_info *mtd, struct nand_bbt_descr *td)
 			block = i * nrblocks;
 		for (j = 0; j < td->maxblocks; j++) {
 			oldval = bbt_get_entry(this, block);
-			bbt_mark_entry(this, block, BBT_BLOCK_RESERVED);
-			if (oldval != BBT_BLOCK_RESERVED)
-				update = 1;
+			if (oldval == BBT_BLOCK_GOOD) {
+				bbt_mark_entry(this, block, BBT_BLOCK_RESERVED);
+				if (oldval != BBT_BLOCK_RESERVED)
+					update = 1;
+			}
 			block++;
 		}
 		/*
@@ -1358,6 +1362,15 @@ int nand_markbad_bbt(struct mtd_info *mtd, loff_t offs)
 		ret = nand_update_bbt(mtd, offs);
 
 	return ret;
+}
+
+int nand_isbadtype_bbt(struct mtd_info *mtd, loff_t offs)
+{
+	struct nand_chip *this = mtd->priv;
+	int block;
+
+	block = (int)(offs >> this->bbt_erase_shift);
+	return (int)bbt_get_entry(this, block);
 }
 
 EXPORT_SYMBOL(nand_scan_bbt);

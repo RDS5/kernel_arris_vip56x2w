@@ -432,7 +432,8 @@ EXPORT_SYMBOL(phy_start_aneg);
  */
 void phy_start_machine(struct phy_device *phydev)
 {
-	queue_delayed_work(system_power_efficient_wq, &phydev->state_queue, HZ);
+	queue_delayed_work(system_power_efficient_wq, &phydev->state_queue,
+			   PHY_INIT_TIME);
 }
 
 /**
@@ -710,6 +711,7 @@ void phy_state_machine(struct work_struct *work)
 			container_of(dwork, struct phy_device, state_queue);
 	int needs_aneg = 0, do_suspend = 0;
 	int err = 0;
+	int use_fast_timer = 0;
 
 	mutex_lock(&phydev->lock);
 
@@ -718,14 +720,17 @@ void phy_state_machine(struct work_struct *work)
 	case PHY_STARTING:
 	case PHY_READY:
 	case PHY_PENDING:
+		use_fast_timer = 1;
 		break;
 	case PHY_UP:
+		use_fast_timer = 1;
 		needs_aneg = 1;
 
 		phydev->link_timeout = PHY_AN_TIMEOUT;
 
 		break;
 	case PHY_AN:
+		use_fast_timer = 1;
 		err = phy_read_status(phydev);
 		if (err < 0)
 			break;
@@ -757,14 +762,17 @@ void phy_state_machine(struct work_struct *work)
 		}
 		break;
 	case PHY_NOLINK:
-		err = phy_read_status(phydev);
-		if (err)
-			break;
+		/* Only read link status in polling mode */
+		if (PHY_POLL == phydev->irq) {
+			err = phy_read_status(phydev);
+			if (err)
+				break;
 
-		if (phydev->link) {
-			phydev->state = PHY_RUNNING;
-			netif_carrier_on(phydev->attached_dev);
-			phydev->adjust_link(phydev->attached_dev);
+			if (phydev->link) {
+				phydev->state = PHY_RUNNING;
+				netif_carrier_on(phydev->attached_dev);
+				phydev->adjust_link(phydev->attached_dev);
+			}
 		}
 		break;
 	case PHY_FORCING:
@@ -876,8 +884,14 @@ void phy_state_machine(struct work_struct *work)
 	if (err < 0)
 		phy_error(phydev);
 
-	queue_delayed_work(system_power_efficient_wq, &phydev->state_queue,
-			   PHY_STATE_TIME * HZ);
+	if (use_fast_timer)
+		queue_delayed_work(system_power_efficient_wq,
+				   &phydev->state_queue,
+				   PHY_INIT_TIME);
+	else
+		queue_delayed_work(system_power_efficient_wq,
+				   &phydev->state_queue,
+				   PHY_STATE_TIME);
 }
 
 void phy_mac_interrupt(struct phy_device *phydev, int new_link)

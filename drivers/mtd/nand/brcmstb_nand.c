@@ -1344,6 +1344,7 @@ static const unsigned int block_sizes[] = { 16, 128, 8, 512, 256 };
 static const unsigned int page_sizes[] = { 512, 2048, 4096 };
 #endif
 
+#if 0
 static void brcmstb_nand_set_cfg(struct brcmstb_nand_host *host,
 	struct brcmstb_nand_cfg *cfg)
 {
@@ -1403,6 +1404,7 @@ static void brcmstb_nand_set_cfg(struct brcmstb_nand_host *host,
 	WR_CORR_THRESH(host->cs, ((cfg->ecc_level << cfg->sector_size_1k)
 				* 3 + 2) / 4);
 }
+#endif
 
 static void brcmstb_nand_get_cfg(struct brcmstb_nand_host *host,
 	struct brcmstb_nand_cfg *cfg)
@@ -1528,6 +1530,9 @@ static int brcmstb_nand_setup_dev(struct brcmstb_nand_host *host)
 		new_cfg.spare_area_size = MAX_CONTROLLER_OOB;
 
 	if (!brcmstb_nand_config_match(&orig_cfg, &new_cfg)) {
+		printk("NAND configuration differ but will not"
+			"reconfigure to avoid using different configurations\n");
+#if 0
 #if CONTROLLER_VER >= 50
 		/* default to 1K sector size (if page is large enough) */
 		new_cfg.sector_size_1k = (new_cfg.page_size >= 1024) ? 1 : 0;
@@ -1564,6 +1569,7 @@ static int brcmstb_nand_setup_dev(struct brcmstb_nand_host *host)
 			brcmstb_nand_print_cfg(msg, &new_cfg);
 			dev_info(&host->pdev->dev, "detected %s\n", msg);
 		}
+#endif
 	} else {
 		/*
 		 * Set oobsize to be consistent with controller's

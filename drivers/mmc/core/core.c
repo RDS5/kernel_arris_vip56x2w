@@ -2610,6 +2610,9 @@ int mmc_cache_ctrl(struct mmc_host *host, u8 enable)
 	unsigned int timeout;
 	int err = 0;
 
+	/* Explicit disable cache */
+	enable = false;
+
 	if (mmc_card_is_removable(host))
 		return err;
 

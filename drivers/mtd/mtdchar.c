@@ -668,6 +668,7 @@ static int mtdchar_ioctl(struct file *file, u_int cmd, u_long arg)
 
 	case MEMERASE:
 	case MEMERASE64:
+	case MEMERASEBADBLOCK:
 	{
 		struct erase_info *erase;
 
@@ -707,6 +708,13 @@ static int mtdchar_ioctl(struct file *file, u_int cmd, u_long arg)
 			erase->mtd = mtd;
 			erase->callback = mtdchar_erase_callback;
 			erase->priv = (unsigned long)&waitq;
+
+			/* Allowed to to erase bad blocks? */
+			if(cmd == MEMERASEBADBLOCK) {
+				erase->bb_override = 1;
+			} else {
+				erase->bb_override = 0;
+			}
 
 			/*
 			  FIXME: Allow INTERRUPTIBLE. Which means
@@ -858,6 +866,20 @@ static int mtdchar_ioctl(struct file *file, u_int cmd, u_long arg)
 		if (copy_from_user(&offs, argp, sizeof(loff_t)))
 			return -EFAULT;
 		return mtd_block_isbad(mtd, offs);
+		break;
+	}
+
+	/* For MTC (production test) use */
+	case MEMGETBADBLOCKTYPE:
+	{
+		loff_t offs;
+
+		if (copy_from_user(&offs, argp, sizeof(loff_t)))
+			return -EFAULT;
+		if (!mtd->_block_isbadtype)
+			ret = -EOPNOTSUPP;
+		else
+			return mtd->_block_isbadtype(mtd, offs);
 		break;
 	}
 

@@ -356,6 +356,13 @@ config BLK_DEV_SX8
 
 	  Use devices /dev/sx8/$N and /dev/sx8/$Np$M.
 
+config BLK_KREATV_ROOTDISK
+       boolean "KreaTV rootdisk block device"
+       depends on BLK_DEV_RAM=n
+       help
+         KreaTV rootdisk block device is used to mount rootdisk
+         in ram, specified by cmdline rootdisk=m:<size>@<offset>
+
 config BLK_DEV_RAM
 	tristate "RAM block device support"
 	---help---

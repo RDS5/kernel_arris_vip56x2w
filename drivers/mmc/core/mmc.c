@@ -1288,25 +1288,13 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	 */
 	if (card->ext_csd.cache_size > 0) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-				EXT_CSD_CACHE_CTRL, 1,
+				EXT_CSD_CACHE_CTRL, 0 /* disable */,
 				card->ext_csd.generic_cmd6_time);
 		if (err && err != -EBADMSG)
 			goto free_card;
 
-		/*
-		 * Only if no error, cache is turned on successfully.
-		 */
-		if (err) {
-			pr_warning("%s: Cache is supported, "
-					"but failed to turn on (%d)\n",
-					mmc_hostname(card->host), err);
-			card->ext_csd.cache_ctrl = 0;
-			err = 0;
-		} else {
-			card->ext_csd.cache_ctrl = 1;
-		}
+		card->ext_csd.cache_ctrl = 0;
 	}
-
 	/*
 	 * The mandatory minimum values are defined for packed command.
 	 * read: 5, write: 3
@@ -1357,7 +1345,8 @@ static int mmc_sleep(struct mmc_host *host)
 	struct mmc_card *card = host->card;
 	int err;
 
-	if (host->caps2 & MMC_CAP2_NO_SLEEP_CMD)
+	if (host->caps2 & MMC_CAP2_NO_SLEEP_CMD ||
+        	system_state == SYSTEM_RESTART)
 		return 0;
 
 	err = mmc_deselect_cards(host);

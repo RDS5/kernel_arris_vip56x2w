@@ -600,5 +600,10 @@ config TILE_SROM
 	  device appear much like a simple EEPROM, and knows
 	  how to partition a single ROM for multiple purposes.
 
+config KBOX_DEVICE
+	boolean "Kbox device"
+	help
+	  The Kbox device is used by hal to access the HW.
+
 endmenu
 

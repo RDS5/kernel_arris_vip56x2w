@@ -439,12 +439,17 @@ out:
 #define NFSROOT_TIMEOUT_MAX	30
 #define NFSROOT_RETRY_MAX	5
 
+extern int nfs_allowed;
 static int __init mount_nfs_root(void)
 {
 	char *root_dev, *root_data;
 	unsigned int timeout;
 	int try, err;
 
+	if (nfs_allowed != 2) {
+		printk(KERN_ERR "NFS root mount not allowed\n");
+		return 0;
+	}
 	err = nfs_root_data(&root_dev, &root_data);
 	if (err != 0)
 		return 0;

@@ -40,6 +40,38 @@
 static phys_addr_t phys_initrd_start __initdata = 0;
 static unsigned long phys_initrd_size __initdata = 0;
 
+/* Used by frame buffer which is used in kbox device */
+#define MIN_DRAM_CONFIG (256*1024*1024)
+void *video_memory = NULL;
+unsigned int video_memory_size = (12*1024*1024);
+
+phys_addr_t secure_pcie_memory = 0;
+unsigned int secure_pcie_memory_size = 0;
+
+static int __init setup_secure_pcie_memory(char *p)
+{
+	phys_addr_t start;
+	unsigned long size;
+	char *endp;
+	size = memparse(p, &endp);
+	if (*endp == '@') {
+		start = memparse(endp + 1, NULL);
+
+		secure_pcie_memory = (void*)start;
+		secure_pcie_memory_size = size;
+	}
+	return 0;
+}
+early_param("pcie_reservation", setup_secure_pcie_memory);
+
+EXPORT_SYMBOL(secure_pcie_memory);
+EXPORT_SYMBOL(secure_pcie_memory_size);
+
+#if defined(CONFIG_KBOX_SECONDARY_FB_MEMORY)
+void *secondary_fb_memory = NULL;
+unsigned int secondary_fb_memory_size = (4*1024*1024);
+#endif
+
 static int __init early_initrd(char *p)
 {
 	phys_addr_t start;
@@ -56,6 +88,35 @@ static int __init early_initrd(char *p)
 	return 0;
 }
 early_param("initrd", early_initrd);
+
+#ifdef CONFIG_BLK_KREATV_ROOTDISK
+extern unsigned long rootdisk_offset;
+extern unsigned long rootdisk_size;
+extern char rootdisk_type;
+
+static void __init reserve_kreatv_rootdisk(void)
+{
+	if (rootdisk_type == 'm' &&
+	    rootdisk_offset != 0 && rootdisk_size != 0) {
+		int ret;
+		unsigned long rootdisk_mem_start = rootdisk_offset & ~PAGE_OFFSET;
+		unsigned long rootdisk_mem_size =
+			ALIGN(rootdisk_size, PAGE_SIZE);
+
+		ret = memblock_reserve(rootdisk_mem_start, rootdisk_mem_size);
+		if (ret < 0) {
+			printk(KERN_WARNING "KreaTV rootdisk reservation failed - "
+			       "memory is in use (0x%lx)\n", (unsigned long)rootdisk_mem_start);
+			return;
+		}
+		printk(KERN_INFO "Reserving %ldMB of memory at %ldMB (0x%lx)"
+		       "for KreaTV rootdisk\n",
+		       (unsigned long)(rootdisk_mem_size >> 20),
+		       (unsigned long)(rootdisk_mem_start >> 20),
+		       (unsigned long)(rootdisk_mem_start));
+	}
+}
+#endif
 
 static int __init parse_tag_initrd(const struct tag *tag)
 {
@@ -319,6 +380,17 @@ void __init arm_memblock_init(struct meminfo *mi,
 		initrd_end = initrd_start + phys_initrd_size;
 	}
 #endif
+#if defined(CONFIG_KBOX_RESERVE_SECURE_PCIE_MEMORY)
+	if (secure_pcie_memory && secure_pcie_memory_size > 0) {
+		printk("Reserve %x@%p for PCIe\n", secure_pcie_memory_size, secure_pcie_memory);
+		memblock_reserve(secure_pcie_memory, secure_pcie_memory_size);
+		memblock_free(secure_pcie_memory, secure_pcie_memory_size);
+		memblock_remove(secure_pcie_memory, secure_pcie_memory_size);
+	}
+#endif
+#ifdef CONFIG_BLK_KREATV_ROOTDISK
+	reserve_kreatv_rootdisk();
+#endif
 
 	arm_mm_memblock_reserve();
 	arm_dt_memblock_reserve();
@@ -330,6 +402,20 @@ void __init arm_memblock_init(struct meminfo *mi,
 	 * subtraction
 	 */
 	early_init_fdt_scan_reserved_mem();
+
+        /* Allocate graphics memory which is announced by kboxdev and mmap via /dev/mem */
+	video_memory = (void*)(MIN_DRAM_CONFIG - video_memory_size);
+#ifdef CONFIG_KBOX_RESERVE_VIDEO_AREA
+	memblock_reserve((phys_addr_t)video_memory, video_memory_size);
+#endif
+
+#if defined(CONFIG_KBOX_SECONDARY_FB_MEMORY)
+	/* Surface must reside on MEMC1 which is between 0x80000000-0xc0000000 on eg VIP3500 */
+	secondary_fb_memory = (void*)0x80000000;
+#ifdef CONFIG_KBOX_RESERVE_SECONDARY_FB_AREA
+	memblock_reserve((phys_addr_t)secondary_fb_memory, secondary_fb_memory_size);
+#endif
+#endif
 
 	/* reserve any platform specific memblock areas */
 	if (mdesc->reserve)

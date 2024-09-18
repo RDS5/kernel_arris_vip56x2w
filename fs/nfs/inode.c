@@ -1829,12 +1829,28 @@ static struct pernet_operations nfs_net_ops = {
 	.size = sizeof(struct nfs_net),
 };
 
+int nfs_allowed=0;
+static int __init option_nfs_allowed(char *opt)
+{
+	if (strcmp(opt, "yes") == 0) {
+		nfs_allowed = 1;
+	}
+	else if (strcmp(opt, "root") == 0) {
+		nfs_allowed = 2;
+	}
+	return 1;
+}
+__setup("nfs_allowed=", option_nfs_allowed);
+
 /*
  * Initialize NFS
  */
 static int __init init_nfs_fs(void)
 {
 	int err;
+
+	if (nfs_allowed == 0)
+		return 0;
 
 	err = register_pernet_subsys(&nfs_net_ops);
 	if (err < 0)
@@ -1906,6 +1922,9 @@ out9:
 
 static void __exit exit_nfs_fs(void)
 {
+	if (nfs_allowed == 0)
+		return;
+
 	nfs_destroy_directcache();
 	nfs_destroy_writepagecache();
 	nfs_destroy_readpagecache();

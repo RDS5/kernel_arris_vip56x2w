@@ -140,6 +140,9 @@
 	 ((in_dev)->mr_v2_seen && \
 	  time_before(jiffies, (in_dev)->mr_v2_seen)))
 
+// ARRIS change: Make it configurable to ignore IGMP reports by other queriers
+static bool suppress_report_listening = false;
+
 static int unsolicited_report_interval(struct in_device *in_dev)
 {
 	int interval_ms, interval_jiffies;
@@ -852,6 +855,10 @@ static bool igmp_heard_report(struct in_device *in_dev, __be32 group)
 
 	if (group == IGMP_ALL_HOSTS)
 		return false;
+
+	if (suppress_report_listening) {
+		return false;
+	}
 
 	rcu_read_lock();
 	for_each_pmc_rcu(in_dev, im) {
@@ -2735,6 +2742,44 @@ static const struct file_operations igmp_mcf_seq_fops = {
 	.release	=	seq_release_net,
 };
 
+
+static ssize_t proc_write_igmp_suppress_report_listening(
+	struct file *file, const char __user *buffer, size_t count, loff_t *offset)
+{
+	char ch;
+	if (count == 0 || copy_from_user(&ch, buffer, 1))
+		return -EFAULT;
+
+	suppress_report_listening = (ch != '0');
+	return count;
+}
+
+static ssize_t proc_read_igmp_suppress_report_listening(
+	struct file *file, char __user *buffer, size_t count, loff_t *offset)
+{
+	char value;
+	if (count < 1) {
+		return -EINVAL;
+	}
+
+	if (*offset > 0) {
+		return 0;
+	}
+
+	value = suppress_report_listening ? '1' : '0';
+	if (copy_to_user(buffer, &value, 1) != 0) {
+		return -EFAULT;
+	}
+
+	*offset += 1;
+	return 1;
+}
+
+static const struct file_operations proc_igmp_suppress_report_listening = {
+	.read = proc_read_igmp_suppress_report_listening,
+	.write = proc_write_igmp_suppress_report_listening,
+};
+
 static int __net_init igmp_net_init(struct net *net)
 {
 	struct proc_dir_entry *pde;
@@ -2746,8 +2791,17 @@ static int __net_init igmp_net_init(struct net *net)
 			  &igmp_mcf_seq_fops);
 	if (!pde)
 		goto out_mcfilter;
+	pde = proc_create("igmp_suppress_report_listening",
+			  S_IFREG | S_IRUGO | S_IWUSR,
+			  NULL,
+			  &proc_igmp_suppress_report_listening);
+	if (!pde)
+		goto out_suppress_report_listening;
+
 	return 0;
 
+out_suppress_report_listening:
+	remove_proc_entry("mcfilter", net->proc_net);
 out_mcfilter:
 	remove_proc_entry("igmp", net->proc_net);
 out_igmp:
@@ -2756,6 +2810,7 @@ out_igmp:
 
 static void __net_exit igmp_net_exit(struct net *net)
 {
+	remove_proc_entry("igmp_suppress_report_listening", NULL);
 	remove_proc_entry("mcfilter", net->proc_net);
 	remove_proc_entry("igmp", net->proc_net);
 }

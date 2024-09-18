@@ -2921,8 +2921,8 @@ struct hci_dev *hci_alloc_dev(void)
 
 	hdev->le_scan_interval = 0x0060;
 	hdev->le_scan_window = 0x0030;
-	hdev->le_conn_min_interval = 0x0028;
-	hdev->le_conn_max_interval = 0x0038;
+	hdev->le_conn_min_interval = 0x0008;
+	hdev->le_conn_max_interval = 0x0008;
 
 	mutex_init(&hdev->lock);
 	mutex_init(&hdev->req_lock);

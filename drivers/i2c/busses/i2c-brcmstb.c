@@ -482,7 +482,7 @@ static int brcmstb_i2c_xfer(struct i2c_adapter *adapter,
 		while (len) {
 			bytes_to_xfer = min(len, N_DATA_BYTES);
 
-			if (ignore_nack || len <= N_DATA_BYTES)
+			if (ignore_nack)/* || len <= N_DATA_BYTES)*/
 				cmd = (pmsg->flags & I2C_M_RD) ? CMD_RD_NOACK
 					: CMD_WR_NOACK;
 

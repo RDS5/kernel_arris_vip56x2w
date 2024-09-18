@@ -823,6 +823,10 @@ static int brcmstb_pm_init(void)
 	if (!soc_is_brcmstb())
 		return 0;
 
+	/* Take USB out of power down */
+	/* Clear BCHP_USB_CTRL_PLL_CTL_PLL_IDDQ_PWRDN bit in the BCHP_USB_CTRL_SETUP register */
+	BDEV_UNSET(BCHP_USB_CTRL_REG_START+4, 0x80000000);
+
 	/* AON ctrl registers */
 	base = brcmstb_ioremap_match(aon_ctrl_dt_ids, 0, NULL, NULL);
 	if (IS_ERR_OR_NULL(base)) {

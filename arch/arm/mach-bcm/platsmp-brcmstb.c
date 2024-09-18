@@ -361,12 +361,13 @@ static int brcmstb_boot_secondary(unsigned int cpu, struct task_struct *idle)
 	if (!cpubiuctrl_block || !hif_cont_block)
 		return -ENODEV;
 
+#ifndef CONFIG_KREATV_BOOT_LOADER
 	/* Bring up power to the core if necessary */
 	if (brcmstb_cpu_get_power_state(cpu) == 0)
 		brcmstb_cpu_power_on(cpu);
 
 	brcmstb_cpu_boot(cpu);
-
+#endif
 	return 0;
 }
 

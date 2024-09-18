@@ -296,6 +296,11 @@ static int get_phy_id(struct mii_bus *bus, int addr, u32 *phy_id,
 
 	/* Grab the bits from PHYIR1, and put them in the upper half */
 	phy_reg = mdiobus_read(bus, addr, MII_PHYSID1);
+
+        /* Dirty fix to make PHY going on BCM7250 */
+        if (!phy_reg) {
+          phy_reg = mdiobus_read(bus, addr, MII_PHYSID1);
+        }
 	if (phy_reg < 0)
 		return -EIO;
 
@@ -425,6 +430,9 @@ int phy_connect_direct(struct net_device *dev, struct phy_device *phydev,
 		return rc;
 
 	phy_prepare_link(phydev, handler);
+	/* Make sure higher levels (i.e. Ethtool) returns link
+	   down before the PHY has been properly initialized. */
+	netif_carrier_off(phydev->attached_dev);
 	phy_start_machine(phydev);
 	if (phydev->irq > 0)
 		phy_start_interrupts(phydev);
@@ -1159,8 +1167,13 @@ static int phy_probe(struct device *dev)
 	 * but the interrupt is still a valid one
 	 */
 	if (!(phydrv->flags & PHY_HAS_INTERRUPT) &&
-	    phy_interrupt_is_valid(phydev))
+	    phy_interrupt_is_valid(phydev)) {
+		/* Make sure phy interrupts are used. Please verify
+		   that the phy is registered before the MAC if this
+		   printout has been triggered. */
+		printk(KERN_WARNING "PHY interrupts not enabled\n");
 		phydev->irq = PHY_POLL;
+	}
 
 	if (phydrv->flags & PHY_IS_INTERNAL)
 		phydev->is_internal = true;

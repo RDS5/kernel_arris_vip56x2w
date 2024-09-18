@@ -110,6 +110,16 @@ config MTD_CMDLINE_PARTS
 
 	  If unsure, say 'N'.
 
+if MTD_CMDLINE_PARTS
+
+config MTD_CMDLINE_PARTS_PROC
+	bool "Add proc file making it possible to override cmdline mtdpart"
+	help
+	  The mtd partitions can be changed in runtime by writing to
+	  /proc/mtd_cmdlinepart.
+
+endif # MTD_CMDLINE_PARTS
+
 config MTD_AFS_PARTS
 	tristate "ARM Firmware Suite partition parsing"
 	depends on ARM

@@ -46,11 +46,14 @@ ENTRY(relocate_new_kernel)
 	beq	0b
 	bic r3,r3,#8
 	mov r6,#1024
+
 9:
-	ldr r5,[r3],#4
-	str r5,[r4],#4
-	subs r6,r6,#1
-	bne 9b
+	mov r2, r6
+10:
+	ldmia r3!, {r5-r12}
+	stmia r4!, {r5-r12}
+	subs r2, r2, #8
+	bne 10b
 	b 0b
 
 2:

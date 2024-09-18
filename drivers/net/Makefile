@@ -73,3 +73,6 @@ obj-$(CONFIG_USB_CDC_PHONET)   += usb/
 
 obj-$(CONFIG_HYPERV_NET) += hyperv/
 obj-$(CONFIG_NTB_NETDEV) += ntb_netdev.o
+
+# This needs to be after any devices which may use it
+obj-$(CONFIG_NWHW_CONFIG) += nwhwconfig.o
